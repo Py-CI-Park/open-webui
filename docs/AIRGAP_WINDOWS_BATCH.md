@@ -2,7 +2,7 @@
 
 이 문서는 Docker를 사용하지 않고 Windows x64 환경에서 Open WebUI를 폐쇄망에 구축하는 방법을 정리합니다. 운영 방식은 AeroOne과 동일하게 배치 파일 3개로 나눕니다.
 
-- `01_online_package.bat`: 인터넷망 PC에서 오프라인 번들 생성
+- `01_online_package.bat`: 인터넷망 PC에서 오프라인 번들과 반입용 ZIP 생성
 - `02_offline_install.bat`: 폐쇄망 서버에서 로컬 wheelhouse로 설치
 - `03_run.bat`: 폐쇄망 서버에서 Open WebUI 실행
 
@@ -34,8 +34,8 @@ Ollama는 Open WebUI와 별개로 설치/운영합니다. Open WebUI는 실행 �
 인터넷망 PC
   01_online_package.bat
       ↓
-  offline-bundle 생성
-      ↓ 복사
+  offline-bundle 및 release ZIP 생성
+      ↓ ZIP 반입 또는 offline-bundle 복사
 폐쇄망 서버
   02_offline_install.bat
       ↓
@@ -62,6 +62,21 @@ offline-bundle\
   README-offline.txt   번들 정보
 ```
 
+릴리즈 ZIP:
+
+```text
+release\open-webui-airgap-windows-YYYYMMDD-HHMMSS.zip
+```
+
+이 ZIP은 폐쇄망 서버로 바로 반입할 수 있도록 아래 항목을 함께 담습니다.
+
+```text
+offline-bundle\
+02_offline_install.bat
+03_run.bat
+AIRGAP_WINDOWS_BATCH.md
+```
+
 주요 동작:
 
 - 저장소를 `offline-bundle\source-stage`로 격리 복사합니다.
@@ -76,19 +91,26 @@ offline-bundle\
   - NLTK: `punkt_tab`
 - 생성된 wheelhouse만 사용해 오프라인 설치 검증을 수행합니다.
 - `pip check`로 의존성 충돌을 확인합니다.
+- `release\open-webui-airgap-windows-YYYYMMDD-HHMMSS.zip`을 생성합니다.
 
-## 2. 폐쇄망 서버로 복사
+## 2. 폐쇄망 서버로 반입
 
-인터넷망 PC에서 생성된 아래 항목을 폐쇄망 서버의 같은 폴더 구조로 복사합니다.
+인터넷망 PC에서 생성된 릴리즈 ZIP을 폐쇄망 서버로 복사한 뒤 압축을 풉니다.
 
 ```text
-01_online_package.bat
-02_offline_install.bat
-03_run.bat
-offline-bundle\
+release\open-webui-airgap-windows-YYYYMMDD-HHMMSS.zip
 ```
 
-폐쇄망 서버에서는 `01_online_package.bat`를 실행하지 않습니다. 이미 생성된 `offline-bundle`을 사용합니다.
+압축 해제 후 구조:
+
+```text
+offline-bundle\
+02_offline_install.bat
+03_run.bat
+AIRGAP_WINDOWS_BATCH.md
+```
+
+폐쇄망 서버에서는 `01_online_package.bat`를 실행하지 않습니다. ZIP 안에 포함된 `offline-bundle`을 사용합니다.
 
 ## 3. 폐쇄망 설치
 

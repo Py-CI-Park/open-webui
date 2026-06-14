@@ -14,6 +14,7 @@ set "WHEELHOUSE=%BUNDLE%\wheelhouse"
 set "SEED_DATA=%BUNDLE%\seed-data"
 set "INSTALLERS=%BUNDLE%\installers"
 set "BUILD_VENV=%BUNDLE%\.build-venv"
+set "RELEASE=%ROOT%\release"
 
 if not exist "%SRC%\pyproject.toml" (
   echo [ERROR] Open WebUI source not found: %SRC%
@@ -41,13 +42,13 @@ if not defined BASE_PY (
   exit /b 1
 )
 
-echo [1/8] Downloading offline installers...
+echo [1/9] Downloading offline installers...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe' -OutFile '%INSTALLERS%\python-3.11.9-amd64.exe'"
 if errorlevel 1 exit /b 1
 powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile '%INSTALLERS%\vc_redist.x64.exe'"
 if errorlevel 1 exit /b 1
 
-echo [2/8] Creating isolated source stage...
+echo [2/9] Creating isolated source stage...
 robocopy "%SRC%" "%STAGE%" /MIR /XD .git .gjc .venv Python311 data offline-bundle node_modules .svelte-kit build dist __pycache__ /XF .env >nul
 if errorlevel 8 exit /b 1
 
@@ -56,16 +57,16 @@ REM Patch only the disposable source-stage copy so the real repository is not mo
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$p='%STAGE%\hatch_build.py'; $s=Get-Content $p -Raw; $s=$s -replace \"subprocess\.run\(\[npm, 'install', '--force'\], check=True\)\", \"subprocess.run([npm, 'ci', '--force'], check=True)\"; Set-Content -Path $p -Value $s -Encoding UTF8"
 if errorlevel 1 exit /b 1
 
-echo [3/8] Creating build virtual environment...
+echo [3/9] Creating build virtual environment...
 "%BASE_PY%" -m venv "%BUILD_VENV%"
 if errorlevel 1 exit /b 1
 set "PYEXE=%BUILD_VENV%\Scripts\python.exe"
 
-echo [4/8] Installing build tools...
+echo [4/9] Installing build tools...
 "%PYEXE%" -m pip install --upgrade pip build wheel
 if errorlevel 1 exit /b 1
 
-echo [5/8] Building Open WebUI wheel with frontend...
+echo [5/9] Building Open WebUI wheel with frontend...
 pushd "%STAGE%"
 "%PYEXE%" -m build --wheel --outdir "%DIST%"
 if errorlevel 1 exit /b 1
@@ -80,13 +81,13 @@ if not defined OW_WHEEL (
 copy /Y "%OW_WHEEL%" "%WHEELHOUSE%\"
 if errorlevel 1 exit /b 1
 
-echo [6/8] Downloading Python dependency wheels...
+echo [6/9] Downloading Python dependency wheels...
 "%PYEXE%" -m pip download --dest "%WHEELHOUSE%" --only-binary=:all: "%OW_WHEEL%"
 if errorlevel 1 exit /b 1
 "%PYEXE%" -m pip download --dest "%WHEELHOUSE%" --only-binary=:all: pip setuptools wheel
 if errorlevel 1 exit /b 1
 
-echo [7/8] Verifying offline install and pre-downloading runtime caches...
+echo [7/9] Verifying offline install and pre-downloading runtime caches...
 "%BASE_PY%" -m venv "%BUNDLE%\.seed-venv"
 if errorlevel 1 exit /b 1
 "%BUNDLE%\.seed-venv\Scripts\python.exe" -m pip install --no-index --find-links "%WHEELHOUSE%" open-webui
@@ -109,7 +110,7 @@ if errorlevel 1 exit /b 1
 if errorlevel 1 exit /b 1
 rmdir /s /q "%BUNDLE%\.seed-venv"
 
-echo [8/8] Writing bundle info...
+echo [8/9] Writing bundle info...
 (
   echo Open WebUI offline bundle
   echo Docker: not used
@@ -121,6 +122,15 @@ echo [8/8] Writing bundle info...
   echo Run: 03_run.bat
 ) > "%BUNDLE%\README-offline.txt"
 
+echo [9/9] Creating release zip...
+mkdir "%RELEASE%" 2>nul
+for /f "delims=" %%T in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Date -Format yyyyMMdd-HHmmss"') do set "STAMP=%%T"
+set "RELEASE_ZIP=%RELEASE%\open-webui-airgap-windows-%STAMP%.zip"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; Compress-Archive -Path @('%BUNDLE%', '%ROOT%\02_offline_install.bat', '%ROOT%\03_run.bat', '%ROOT%\docs\AIRGAP_WINDOWS_BATCH.md') -DestinationPath '%RELEASE_ZIP%' -Force"
+if errorlevel 1 exit /b 1
+
 echo.
 echo [OK] Offline bundle created:
 echo %BUNDLE%
+echo [OK] Release zip created:
+echo %RELEASE_ZIP%

@@ -81,6 +81,10 @@ if not defined OW_WHEEL (
 copy /Y "%OW_WHEEL%" "%WHEELHOUSE%\"
 if errorlevel 1 exit /b 1
 
+REM The isolated source copy is only needed to build the wheel; 02_offline_install.bat
+REM never reads it, so it must not ship in the release zip.
+rmdir /s /q "%STAGE%"
+
 echo [6/9] Downloading Python dependency wheels...
 "%PYEXE%" -m pip download --dest "%WHEELHOUSE%" --only-binary=:all: "%OW_WHEEL%"
 if errorlevel 1 exit /b 1

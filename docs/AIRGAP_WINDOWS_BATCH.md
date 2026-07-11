@@ -58,9 +58,10 @@ offline-bundle\
   wheelhouse\          폐쇄망 pip 설치용 Python wheel 전체
   seed-data\           런타임 캐시 seed 데이터
   installers\          Python 3.11, VC++ 런타임 설치 파일
-  source-stage\        빌드용 임시 소스 복사본
   README-offline.txt   번들 정보
 ```
+
+`source-stage`(빌드용 임시 소스 복사본)와 `.build-venv`(빌드 도구 전용 가상환경)는 wheel 빌드에만 쓰이고 `02_offline_install.bat`가 참조하지 않으므로, wheel을 `wheelhouse`로 복사한 직후 자동 삭제되어 최종 번들/릴리즈 ZIP에는 포함되지 않습니다.
 
 릴리즈 ZIP:
 
@@ -83,6 +84,7 @@ AIRGAP_WINDOWS_BATCH.md
 - 실제 저장소 파일은 수정하지 않고, 임시 복사본의 `hatch_build.py`만 `npm install --force` 대신 `npm ci --force`를 쓰도록 패치합니다.
 - `package-lock.json` 기준으로 프론트엔드를 포함한 Open WebUI wheel을 빌드합니다.
 - `pip download --only-binary=:all:`로 의존성 wheel을 `wheelhouse`에 모읍니다.
+- wheel 복사가 끝나면 `source-stage`와 `.build-venv`를 삭제해 릴리즈 ZIP에 빌드 전용 파일이 남지 않게 합니다.
 - 폐쇄망에서 필요한 기본 캐시를 `seed-data`에 미리 받습니다.
   - RAG embedding: `sentence-transformers/all-MiniLM-L6-v2`
   - auxiliary embedding: `TaylorAI/bge-micro-v2`

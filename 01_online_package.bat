@@ -87,6 +87,9 @@ if errorlevel 1 exit /b 1
 "%PYEXE%" -m pip download --dest "%WHEELHOUSE%" --only-binary=:all: pip setuptools wheel
 if errorlevel 1 exit /b 1
 
+REM Build tooling is only needed to produce the wheel; it must not ship in the release zip.
+rmdir /s /q "%BUILD_VENV%"
+
 echo [7/9] Verifying offline install and pre-downloading runtime caches...
 "%BASE_PY%" -m venv "%BUNDLE%\.seed-venv"
 if errorlevel 1 exit /b 1

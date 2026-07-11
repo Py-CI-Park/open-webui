@@ -183,6 +183,95 @@ REM set "OLLAMA_BASE_URL=http://192.168.0.50:11434"
 
 폐쇄망에서는 Ollama 모델도 별도로 반입되어 있어야 합니다. Open WebUI 오프라인 번들은 Ollama 모델 파일을 포함하지 않습니다.
 
+Ollama 모델 반입 방법 2가지:
+
+- **온라인 PC에서 pull 후 폴더 복사(권장)**: 온라인 PC에서 `ollama pull <model>` 실행 → 기본 저장 위치(`%USERPROFILE%\.ollama\models`, blobs + manifests)를 통째로 USB 등으로 반입해 폐쇄망 서버의 동일 경로(또는 `OLLAMA_MODELS` 환경변수로 지정한 경로)에 덮어씁니다.
+- **GGUF + Modelfile로 로컬 생성**: 반입한 `.gguf` 파일을 `ollama create mymodel -f Modelfile`로 폐쇄망에서 직접 등록합니다. 레지스트리 접근이 필요 없습니다.
+
+## 5. 첫 접속 및 운영
+
+### 최초 접속 / 관리자 계정
+
+`03_run.bat` 기동 후 접속하면 **회원가입한 첫 번째 계정이 자동으로 admin 권한**을 갖습니다. 이후 가입자는 기본값(`DEFAULT_USER_ROLE=pending`)상 admin이 Admin Panel → Users에서 승인/역할을 지정하기 전까지 대기 상태입니다.
+
+폐쇄망이어도 첫 계정 생성 직후 회원가입을 잠그는 것을 권장합니다(6장 보안 참고).
+
+### 일상 운영
+
+| 작업 | 방법 |
+|---|---|
+| 재시작 | `03_run.bat` 콘솔에서 Ctrl+C로 정상 종료 후 재실행 |
+| 데이터 위치 | `data\` 폴더 전체(DB, 업로드 파일, 캐시) — 백업 대상은 이 폴더 전체 |
+| 로그 확인 | `03_run.bat` 콘솔에 uvicorn 로그 출력. 파일로 남기려면 `03_run.bat > server.log 2>&1`처럼 리다이렉트 |
+| 데이터 백업 | 서비스 중지 후 `data\` 폴더 전체 복사(SQLite 기반이라 파일 복사만으로 백업 가능) |
+| 데이터 내보내기 | Admin Panel → Settings → Database → Export (`ENABLE_ADMIN_EXPORT` 기본 활성) |
+
+### 사용자/그룹 관리
+
+Admin Panel → Users에서 승인·역할(admin/user/pending) 변경, Admin Panel → Groups에서 모델 접근 권한을 그룹 단위로 제한할 수 있습니다.
+
+## 6. 튜닝 및 개선 추천
+
+이 저장소(0.9.6) `backend/open_webui/config.py`, `backend/open_webui/env.py` 실제 설정 코드를 확인해 정리한 내용입니다.
+
+### RAG(문서 검색) 품질
+
+| 설정 | 기본값 | 추천 |
+|---|---|---|
+| `CHUNK_SIZE` | 1000 | 기술 문서/코드가 많으면 500~800(검색 정밀도↑), 서술형 문서면 1200~1500 |
+| `CHUNK_OVERLAP` | 100 | chunk 경계에서 문맥이 잘리면 150~200으로 |
+| `RAG_TOP_K` | 3 | 근거 문서가 부족하면 5로, 단 컨텍스트 창 여유가 있을 때만 |
+| `ENABLE_RAG_HYBRID_SEARCH` | false | 켜는 것을 추천. BM25(키워드) + 임베딩(의미) 하이브리드 검색이며 `rank-bm25`가 이미 wheelhouse에 포함되어 있어 추가 반입 없이 바로 활성화 가능 |
+| `RAG_RERANKING_MODEL` | (미설정) | 검색 정확도가 중요하면 추가. 단, 폐쇄망에서는 `01_online_package.bat`의 seed-data 단계에 reranker 모델도 함께 받도록 수정해야 오프라인에서 동작 |
+
+Admin Panel → Settings → Documents에서 UI로도 조정 가능합니다(코드 수정 불필요, DB에 저장되는 설정).
+
+### 성능
+
+- **멀티 워커**: `03_run.bat` 실행 전 `set "UVICORN_WORKERS=4"`(CPU 코어 수에 맞춰)로 동시 사용자 처리량 향상. 단 워커 2개 이상이면 `WEBSOCKET_MANAGER=redis`가 사실상 필수(안 그러면 워커 간 채팅 스트리밍 동기화가 깨져 실시간 응답이 끊기는 것처럼 보임). 폐쇄망이면 Redis도 별도 반입/설치 필요.
+- **GPU**: Ollama 쪽에서 관리(Open WebUI는 API만 호출). 모델별 `num_gpu`, `num_ctx`, `num_thread`는 채팅 화면 모델의 "Advanced Params"에서 개별 조정.
+- 동시 사용자가 적은(1~5명) 소규모 폐쇄망은 `UVICORN_WORKERS=1`(기본값) 그대로가 Redis 인프라 없이 더 단순하고 안정적입니다.
+
+### 보안 (폐쇄망이어도 필요)
+
+- `ENABLE_SIGNUP=false`: 첫 admin 계정 생성 후 회원가입을 잠그고, 이후 사용자는 Admin Panel에서 직접 생성.
+- `JWT_EXPIRES_IN` 기본값 `4w`(4주) — 사내 정책에 맞게 `1d`, `12h` 등으로 단축 권장.
+- 관리자 계정 비밀번호는 설치 직후 강한 값으로 변경(랜덤 초기값 방치 금지).
+- 리버스 프록시(nginx/IIS)로 HTTPS를 감싸는 것을 권장(폐쇄망 내부라도 사내 트래픽 스니핑 리스크는 존재).
+
+### 추가 기능 / 폐쇄망 팁
+
+- **웹 검색 도구**는 외부 인터넷 호출이 필요해 폐쇄망에서는 꺼둔 상태를 유지해야 합니다.
+- **Pipelines**로 사내 시스템(DB 조회, 결재 시스템 등) 연동 가능(별도 반입 필요).
+- 임베딩/reranker/Whisper 등 모델을 바꾸거나 추가할 때마다 `01_online_package.bat`를 재실행해 새 release를 만들어야 폐쇄망에 반영됩니다(런타임 온라인 다운로드 불가).
+
+## 7. 기존 DB 마이그레이션 (버전 업그레이드)
+
+예전 버전(예: Peewee→SQLAlchemy 전환 이후인 0.6.x 이상)의 `webui.db`를 이 airgap 패키지의 새 설치에 그대로 붙여 계정·대화 기록을 유지할 수 있습니다.
+
+### 왜 안전한가
+
+- Open WebUI는 부팅 시마다 Alembic이 자동으로 `command.upgrade(..., 'head')`를 실행합니다(`backend/open_webui/config.py`의 `run_migrations()`). 기존 DB 스키마 버전이 무엇이든 필요한 마이그레이션만 순서대로 적용됩니다.
+- `backend/open_webui/migrations/versions/`의 마이그레이션들은 이미 존재하는 테이블/컬럼/인덱스는 건너뛰고, legacy 테이블에 누락된 PK도 보정하도록 방어적으로 작성되어 있습니다(0.9.6 CHANGELOG에 명시).
+
+### 적용 방법
+
+1. 예전 서버의 `data\webui.db` 백업
+2. 새 airgap 패키지(`02_offline_install.bat` 실행 후 생성된) `data\` 폴더에 그 `webui.db`를 복사(덮어쓰기) — `02_offline_install.bat`의 데이터 복사 단계는 `robocopy /E`(병합)라 기존 파일을 지우지 않으므로 seed-data 복사 전후 어느 시점에 넣어도 안전
+3. `03_run.bat`로 기동 → 첫 부팅 시 자동으로 남은 마이그레이션이 적용됨
+
+### 주의사항
+
+| 항목 | 설명 |
+|---|---|
+| 반드시 사전 백업 | 마이그레이션 대부분은 `downgrade()`가 사실상 no-op이라 되돌리기 어려움 |
+| `-wal` / `-shm` 파일 | 예전 서버에 `webui.db-wal`, `webui.db-shm`이 남아있다면 함께 복사(없다면 정상 종료된 것). 안 그러면 최근 대화 일부가 누락된 것처럼 보일 수 있음 |
+| 대화 기록이 많다면 시간 여유 확보 | 0.8.0에서 추가된 chat message table 마이그레이션은 대화량이 많으면 다소 오래 걸릴 수 있음. 사용자 접속 없는 시간대에 첫 기동 권장 |
+| 버전 혼용 금지 | 마이그레이션 진행/완료 전까지 예전 버전 서버가 같은 DB 파일에 동시에 붙지 않도록 할 것 |
+| `ENABLE_DB_MIGRATIONS` | `03_run.bat`는 이 값을 건드리지 않아 기본값(`true`)으로 유지됨 — 별도 조치 불필요 |
+
+Ollama는 DB 마이그레이션과 완전히 별개 시스템(Open WebUI는 API로만 호출)이므로, 최신 버전 Ollama를 그대로 계속 연결해 써도 무방합니다.
+
 ## 검증 결과
 
 배치 파일 작성 전 동일한 흐름을 임시 테스트 폴더에서 직접 검증했습니다.

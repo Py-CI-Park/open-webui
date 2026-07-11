@@ -105,6 +105,10 @@ Open WebUI can be installed using pip, the Python package installer. Before proc
 
 This will start the Open WebUI server, which you can access at [http://localhost:8080](http://localhost:8080)
 
+### Windows Air-gapped (폐쇄망) Install 🔒
+
+For Windows x64 installs with no internet access, see [`docs/AIRGAP_WINDOWS_BATCH.md`](docs/AIRGAP_WINDOWS_BATCH.md) — covers packaging (`01_online_package.bat`), offline install/run (`02_offline_install.bat`, `03_run.bat`), first-login/admin setup, tuning recommendations, and migrating an existing database from an older install.
+
 ### Quick Start with Docker 🐳
 
 > [!NOTE]  
